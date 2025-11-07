@@ -718,13 +718,12 @@ namespace SimulatorEngine
                             Bandwidth_Hz = this.NoiseBandwidth_CW_Hz,
                             ChirpDuration_sec = this.ChirpDuration_sec,
                             AdcSampleRate_Hz = this.AdcSampleRate_Hz,
-                            //TxPower_W = this.TxPower_W,
+                            
                             Reference_Range_m = this.Reference_Range_m,
                             Reference_SNR_dB = this.Reference_SNR_dB,
                             Reference_RCS_m2 = this.Reference_RCS_m2,
                             Reference_Gain_Linear = this.Reference_Gain_Linear,
-                            TxGain_Linear = this.TxGain_Linear,
-                            RxGain_Linear = this.RxGain_Linear,
+                            ReferenceSignalPower_W = referenceSignalPower,
                             ChannelIndex = i,
                             AntennaBoresight_Global = boresight_Global // 안테나 지향각 전달
                         };

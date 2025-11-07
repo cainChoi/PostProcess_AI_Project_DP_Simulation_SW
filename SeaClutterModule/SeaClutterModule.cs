@@ -75,7 +75,11 @@ namespace SeaClutterModule
 
             // --- 5. 총 클러터 RCS 및 전력 계산 ---
             // (RCS = σ⁰ * 면적, RRE로 평균 전력 계산)
-            double meanClutterPower = CalculatePowerFromRCS(totalClutterRCS, slantRange, lambda, context);
+            double meanClutterPower = CalculateScaledClutterPower(
+                    totalClutterRCS,  // 클러터의 실제 RCS
+                    slantRange,       // 클러터의 실제 거리
+                    context           // 보정 기준값이 담긴 컨텍스트
+                );
             double clutterStdDev = Math.Sqrt(meanClutterPower);
 
             // --- 6. 클러터 I/Q 샘플 생성 (통계 + 도플러) ---
@@ -211,24 +215,32 @@ namespace SeaClutterModule
         }
 
         /// <summary>
-        /// 레이더 방정식(RRE)을 사용해 특정 RCS로부터 수신 전력을 계산합니다.
-        /// (이 함수는 엔진의 로직과 동일해야 함)
+        /// 엔진의 '기준 전력'을 '클러터의 실제 상황'에 맞게 스케일링합니다.
+        /// (엔진의 RRE 스케일링 로직과 동일)
         /// </summary>
-        /// <param name="rcs">총 클러터 RCS (m^2)</param>
-        /// <param name="range">클러터 패치까지의 경사 거리 (m)</param>
-        /// <param name="lambda">파장 (m)</param>
-        /// <param name="context">RRE 파라미터 (Tx/Rx Gain 등)</param>
-        /// <returns>평균 수신 전력 (Watts)</returns>
-        private double CalculatePowerFromRCS(double rcs, double range, double lambda, ClutterContext context)
+        private double CalculateScaledClutterPower(double totalClutterRCS, double clutterRange, ClutterContext context)
         {
+            // (1) 엔진의 "기준점" 신호 전력 가져오기
+            double referenceSignalPower = context.ReferenceSignalPower_W;
 
-            // 빔이 이미 패치를 "가리키고" 있으므로 안테나 Gain은 1.0(0dB)로 가정
-            // (혹은 RRE 계산 시 TxGain, RxGain을 사용)
+            // (2) 거리(R)에 대한 스케일링
+            double R_ref = context.Reference_Range_m;
+            double R_clutter = clutterRange;
+            double scale_Range = (R_ref == 0 || R_clutter == 0) ? 1.0 : Math.Pow(R_ref / R_clutter, 4);
 
-            double signalPower = (context.TxPower_W * context.TxGain_Linear * context.RxGain_Linear * rcs * lambda * lambda)
-                               / (Math.Pow(4 * Math.PI, 3) * Math.Pow(range, 4));
+            // (3) RCS에 대한 스케일링
+            double RCS_ref = context.Reference_RCS_m2;
+            double scale_RCS = (RCS_ref == 0) ? 1.0 : (totalClutterRCS / RCS_ref);
 
-            return signalPower;
+            // (4) Gain에 대한 스케일링
+            // (클러터는 빔 중심(Gain=1.0)에 있다고 가정. 
+            //  표적의 Gain(gain)이 아닌 기준 Gain(Gain_ref)과 비교)
+            double Gain_ref = context.Reference_Gain_Linear;
+            double Gain_clutter = 1.0;
+            double scale_Gain = (Gain_ref == 0) ? 1.0 : Math.Pow(Gain_clutter / Gain_ref, 2);
+
+            // (5) 최종 스케일링된 클러터 전력
+            return referenceSignalPower * scale_Range * scale_RCS * scale_Gain;
         }
     }
 }

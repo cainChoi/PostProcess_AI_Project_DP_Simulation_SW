@@ -76,12 +76,18 @@ namespace RainClutterModule
             double totalClutterRCS = eta * clutterVolume;
             double avgRange = (R_min + R_max) / 2.0;
 
-            double meanClutterPower = CalculatePowerFromRCS(
-                totalClutterRCS,
-                avgRange,
-                lambda_m,
-                context
-            );
+            //double meanClutterPower = CalculatePowerFromRCS(
+            //    totalClutterRCS,
+            //    avgRange,
+            //    lambda_m,
+            //    context
+            //);
+            double meanClutterPower = CalculateScaledClutterPower(
+                totalClutterRCS,  // 클러터의 실제 RCS
+                avgRange,       // 클러터의 실제 거리
+                context           // 보정 기준값이 담긴 컨텍스트
+                );
+
             double clutterStdDev = Math.Sqrt(meanClutterPower); // Rayleigh 분포의 표준편차
 
             // --- 5. 평균 클러터 도플러(Mean Doppler) 계산 ---
@@ -129,6 +135,36 @@ namespace RainClutterModule
 
         // --- 내부 헬퍼 함수들 ---
 
+        // ⬇️ --- 4. 헬퍼 함수 수정 (이름 및 로직 변경) --- ⬇️
+        /// <summary>
+        /// 엔진의 '기준 전력'을 '클러터의 실제 상황'에 맞게 스케일링합니다.
+        /// (엔진의 RRE 스케일링 로직과 동일)
+        /// </summary>
+        private double CalculateScaledClutterPower(double totalClutterRCS, double clutterRange, ClutterContext context)
+        {
+            // (1) 엔진의 "기준점" 신호 전력 가져오기
+            double referenceSignalPower = context.ReferenceSignalPower_W;
+
+            // (2) 거리(R)에 대한 스케일링
+            double R_ref = context.Reference_Range_m;
+            double R_clutter = clutterRange;
+            double scale_Range = (R_ref == 0 || R_clutter == 0) ? 1.0 : Math.Pow(R_ref / R_clutter, 4);
+
+            // (3) RCS에 대한 스케일링
+            double RCS_ref = context.Reference_RCS_m2;
+            double scale_RCS = (RCS_ref == 0) ? 1.0 : (totalClutterRCS / RCS_ref);
+
+            // (4) Gain에 대한 스케일링
+            // (클러터는 빔 중심(Gain=1.0)에 있다고 가정. 
+            //  표적의 Gain(gain)이 아닌 기준 Gain(Gain_ref)과 비교)
+            double Gain_ref = context.Reference_Gain_Linear;
+            double Gain_clutter = 1.0;
+            double scale_Gain = (Gain_ref == 0) ? 1.0 : Math.Pow(Gain_clutter / Gain_ref, 2);
+
+            // (5) 최종 스케일링된 클러터 전력
+            return referenceSignalPower * scale_Range * scale_RCS * scale_Gain;
+        }
+
         private (double R_min, double R_max) CalculateBeamIntersection(double antennaAltitude, Vector3 boresightGlobal, double cloudBase, double cloudTop)
         {
             // 빔 지향각의 수직 성분 (Vy)
@@ -159,13 +195,13 @@ namespace RainClutterModule
             }
         }
 
-        private double CalculatePowerFromRCS(double rcs, double range, double lambda, ClutterContext context)
-        {
-            // (엔진의 RRE 로직과 동일)
-            double signalPower = (context.TxPower_W * context.TxGain_Linear * context.RxGain_Linear * rcs * lambda * lambda)
-                               / (Math.Pow(4 * Math.PI, 3) * Math.Pow(range, 4));
-            return signalPower;
-        }
+        //private double CalculatePowerFromRCS(double rcs, double range, double lambda, ClutterContext context)
+        //{
+        //    // (엔진의 RRE 로직과 동일)
+        //    double signalPower = (context.TxPower_W * context.TxGain_Linear * context.RxGain_Linear * rcs * lambda * lambda)
+        //                       / (Math.Pow(4 * Math.PI, 3) * Math.Pow(range, 4));
+        //    return signalPower;
+        //}
 
     }
 }

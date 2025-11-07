@@ -22,8 +22,12 @@ namespace RadarSim.Core.Clutter
 
         //public double TxPower_W { get; set; }
 
-        public double TxGain_Linear { get; set; }
-        public double RxGain_Linear { get; set; }
+        //public double TxGain_Linear { get; set; }
+        //public double RxGain_Linear { get; set; }
+        /// <summary>
+        /// 엔진의 '기준 신호 전력' (기준 SNR과 잡음으로 계산된 값)
+        /// </summary>
+        public double ReferenceSignalPower_W { get; set; }
 
         public double Reference_Range_m { get; set; }
         public double Reference_SNR_dB { get; set; }
