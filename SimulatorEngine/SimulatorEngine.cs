@@ -61,16 +61,83 @@ namespace SimulatorEngine
 
         //public double CenterFrequency_FMCW2_Hz { get; set; } = 10.5075e9; // 10.501 GHz
 
+
         public double Bandwidth_B1_Hz { get; set; } = 10e6;
         public double Bandwidth_B2_Hz { get; set; } = 15e6;
         public double ChirpDuration_sec { get; set; } = 0.040; // 40ms
         public double AdcSampleRate_Hz { get; set; } = 1e6; // 1MHz
 
         // RRE 파라미터 (레이더 방정식)
-        public double TxPower_W { get; set; } = 1.0;
-        public double TxGain_Linear { get; set; } = 100.0; // 30dBi
-        public double RxGain_Linear { get; set; } = 100.0; // 30dBi
+        //public double TxPower_W { get; set; } = 1.0;
+
+        /// <summary>
+        /// SNR 보정의 기준이 되는 거리 (m)
+        /// </summary>
+        public double Reference_Range_m { get; set; } = 10000.0; // 예: 10km
+
+        /// <summary>
+        /// '기준 거리'에서 (RCS=1, Gain=1일 때)
+        /// 달성하고자 하는 목표 SNR (dB)
+        /// </summary>
+        public double Reference_SNR_dB { get; set; } = 40.0; // 예: 40dB
+
+        /// <summary>
+        /// SNR 보정의 기준이 되는 RCS (m^2)
+        /// </summary>
+        public double Reference_RCS_m2 { get; set; } = 1.0;
+
+        /// <summary>
+        /// SNR 보정의 기준이 되는 안테나 이득 (Linear)
+        /// (보통 Boresight 중앙이므로 1.0)
+        /// </summary>
+        public double Reference_Gain_Linear { get; set; } = 1.0;
+        public double Reference_Gain_Log
+        {
+            get => 10 * Math.Log10(Reference_Gain_Linear);
+            set => Reference_Gain_Linear = Math.Pow(10, value / 10);
+        }
+
+        /// <summary>
+        /// 📡 송신(Tx) 안테나의 선형 이득(Linear Gain)
+        /// 안테나가 에너지를 특정 방향으로 얼마나 잘 집중시키는지를 나타내는 '비율'
+        /// (예: 1000.0은 10^(30/10) = 30dBi에 해당)
+        /// </summary>
+        public double TxGain_Linear { get; set; } = 1000.0; // 30dBi
+        public double TxGain_Log
+        {
+            get => 10 * Math.Log10(TxGain_Linear);
+            set => TxGain_Linear = Math.Pow(10, value / 10);
+        }
+
+        /// <summary>
+        /// 수신(Rx) 안테나의 선형 이득(Linear Gain)
+        /// 안테나가 특정 방향의 신호를 얼마나 잘 수신하는지를 나타내는 '비율'
+        /// (일반적으로 송신 이득(TxGain_Linear)과 동일한 값을 사용)
+        /// </summary>
+        public double RxGain_Linear { get; set; } = 1000.0; // 30dBi
+        public double RxGain_Log
+        {
+            get => 10 * Math.Log10(RxGain_Linear);
+            set => RxGain_Linear = Math.Pow(10, value / 10);
+        }
+
+        /// <summary>
+        /// 수신기 잡음 지수(Noise Figure)의 선형 값 (Noise Factor, F)
+        /// 수신기 내부(증폭기, 믹서 등)에서 '추가로' 발생하는 잡음의 양
+        /// (예: 1.58은 10^(2/10) = 2dB에 해당합니다. 이상적인 수신기는 1.0 (0dB))
+        /// </summary>
         public double NoiseFigure_Linear { get; set; } = 1.58; // 2dB
+        public double NoiseFigure_Log
+        {
+            get => 10 * Math.Log10(NoiseFigure_Linear);
+            set => NoiseFigure_Linear = Math.Pow(10, value / 10);
+        }
+
+        /// <summary>
+        /// 시스템의 기준 잡음 온도 (Kelvin)
+        /// 모든 물체가 열(thermal)로 인해 방출하는 기본적인 잡음(kTB)의 기준
+        /// (관례적으로 290K = 약 17°C를 표준 실온으로 사용)
+        /// </summary>
         public double SystemTemp_K { get; set; } = 290.0;
 
         /// <summary>
@@ -437,7 +504,7 @@ namespace SimulatorEngine
 
             // B. 상대 속도 (v_target - v_platform) ⋅ LOS
             Vector3 relativeVel = targetVel - platformVel;
-            double radialVelocity = Vector3.Dot(relativeVel, losUnitVector);
+            double radialVelocity = -Vector3.Dot(relativeVel, losUnitVector);
 
             // C. 동적 RCS 계산 (표적의 로컬 좌표계 기준 입사각)
             Vector3 lookVector_Global = -relativePos; // 레이더가 표적을 보는 방향
@@ -470,6 +537,8 @@ namespace SimulatorEngine
             double f_range_b2 = (2 * range * Bandwidth_B2_Hz) / (C * ChirpDuration_sec);
             double f_beat_fmcw_b1 = f_range_b1 - f_dop_b1;
             double f_beat_fmcw_b2 = f_range_b2 - f_dop_b2;
+            //double f_beat_fmcw_b1 = f_range_b1 + f_dop_b1;
+            //double f_beat_fmcw_b2 = f_range_b2 + f_dop_b2;
 
 
 
@@ -525,17 +594,24 @@ namespace SimulatorEngine
             // ⬇️ 1. 잡음 대역폭을 ADC 샘플링 속도로 고정
             //    (Nyquist = AdcSampleRate_Hz / 2 이지만,
             //     ADC 앞단 필터가 보통 샘플링 속도와 비슷하므로 AdcSampleRate_Hz를 사용)
-            double adcNoiseBandwidth = this.AdcSampleRate_Hz;
+            //double adcNoiseBandwidth = this.AdcSampleRate_Hz;
 
             // ⬇️ 2. 잡음 계산을 루프 밖으로 이동 (모든 채널 공통)
-            double noisePower = k_Boltzmann * SystemTemp_K * adcNoiseBandwidth * NoiseFigure_Linear;
-            double noiseStdDev = Math.Sqrt(noisePower);
+            //double noisePower = k_Boltzmann * SystemTemp_K * adcNoiseBandwidth * NoiseFigure_Linear;
+            //double noiseStdDev = Math.Sqrt(noisePower);
 
             // ⬇️ 3. 양자화 기준값도 루프 밖으로 이동 (모든 채널 공통)
-            double maxQuantVal = 3.0 * noiseStdDev;
+            //double maxQuantVal = 3.0 * noiseStdDev;
 
 
             AntennaParameters antennaParams = (AntennaParameters)antennaModule.GetParameters();
+
+            // --- SNR 보정에 필요한 기준값 ---
+            double R_ref = this.Reference_Range_m;
+            double RCS_ref = this.Reference_RCS_m2;
+            double Gain_ref = this.Reference_Gain_Linear;
+            double targetSNR_Linear = Math.Pow(10, this.Reference_SNR_dB / 10.0); // 40dB -> 10000
+            
 
             // 안테나의 현재 지향각 (클러터 계산용)
             Vector3 boresight_Global = Vector3.Transform(
@@ -550,7 +626,7 @@ namespace SimulatorEngine
                     //{
                     double current_f_beat;
                     double current_f_carrier;
-                    //double current_noise_bandwidth;
+                    double current_noise_bandwidth;
 
                     // A. 채널 타입 결정
                     if (antennaParams.CwChannelIndices.Contains(i))
@@ -558,7 +634,7 @@ namespace SimulatorEngine
                         // CW 채널
                         current_f_beat = physics.DopplerFrequency_CW;
                         current_f_carrier = this.CenterFrequency_CW_Hz;
-                        //current_noise_bandwidth = this.NoiseBandwidth_CW_Hz; // ⬇️ CW 잡음 대역폭
+                        current_noise_bandwidth = this.NoiseBandwidth_CW_Hz; // ⬇️ CW 잡음 대역폭
                     }
                     else // (FMCW 채널)
                     {
@@ -569,24 +645,38 @@ namespace SimulatorEngine
                                          ? physics.FmcwBeat_B1
                                          : physics.FmcwBeat_B2;
                         current_f_carrier = physics.ActualCarrierFrequency_Hz;
-                        //current_noise_bandwidth = physics.Bandwidth; // ⬇️ FMCW 첩 대역폭
+                        current_noise_bandwidth = physics.Bandwidth; // ⬇️ FMCW 첩 대역폭
                     }
 
 
-                    // B. 신호 전력 계산 (Signal Power)
-                    // B-1. 현재 채널의 파장(lambda) 계산
-                    double lambda = C / current_f_carrier;
+                    // ⬇️ --- B. 잡음(Noise) 및 기준 신호 전력 계산 --- ⬇️
 
-                    // B-2. 레이더 방정식으로 신호 전력 계산
-                    double signalPower = (TxPower_W * TxGain_Linear * RxGain_Linear * rcs * gain * gain * lambda * lambda)
-                                       / (Math.Pow(4 * Math.PI, 3) * Math.Pow(R, 4));
+                    // (1) 현재 채널의 '잡음 전력' 계산 (기존과 동일)
+                    double noisePower = k_Boltzmann * SystemTemp_K * current_noise_bandwidth * NoiseFigure_Linear;
+                    double noiseStdDev = Math.Sqrt(noisePower);
 
-                    // B-3. 신호 진폭 계산
+                    // (2) '기준 신호 전력' 계산
+                    // (기준 거리/RCS에서 목표 SNR을 달성하기 위해 필요한 신호 전력)
+                    double referenceSignalPower = noisePower * targetSNR_Linear;
+
+
+                    // ⬇️ --- C. 실제 신호 전력 계산 (RRE 스케일링) --- ⬇️
+
+                    // 레이더 방정식: P_sig ∝ (RCS * Gain^2) / R^4
+                    // (참고: TxPower, RxGain, lambda 등은 기준값과 현재값에서 상쇄됨)
+
+                    // (1) 거리(R)에 대한 스케일링
+                    double scale_Range = (R_ref == 0 || R == 0) ? 1.0 : Math.Pow(R_ref / R, 4);
+
+                    // (2) RCS에 대한 스케일링
+                    double scale_RCS = (RCS_ref == 0) ? 1.0 : (rcs / RCS_ref);
+
+                    // (3) Gain에 대한 스케일링 (Gain은 2번 곱해짐: Tx*Rx)
+                    double scale_Gain = (Gain_ref == 0) ? 1.0 : Math.Pow(gain / Gain_ref, 2);
+
+                    // (4) 최종 신호 전력 계산
+                    double signalPower = referenceSignalPower * scale_Range * scale_RCS * scale_Gain;
                     double signalAmplitude = Math.Sqrt(signalPower * 2);
-
-                    //// C. 잡음 전력 계산
-                    //double noisePower = k_Boltzmann * SystemTemp_K * current_noise_bandwidth * NoiseFigure_Linear;
-                    //double noiseStdDev = Math.Sqrt(noisePower);
 
 
                     // D. 채널별 위상 편이 계산 (핵심!)
@@ -628,7 +718,11 @@ namespace SimulatorEngine
                             Bandwidth_Hz = this.NoiseBandwidth_CW_Hz,
                             ChirpDuration_sec = this.ChirpDuration_sec,
                             AdcSampleRate_Hz = this.AdcSampleRate_Hz,
-                            TxPower_W = this.TxPower_W,
+                            //TxPower_W = this.TxPower_W,
+                            Reference_Range_m = this.Reference_Range_m,
+                            Reference_SNR_dB = this.Reference_SNR_dB,
+                            Reference_RCS_m2 = this.Reference_RCS_m2,
+                            Reference_Gain_Linear = this.Reference_Gain_Linear,
                             TxGain_Linear = this.TxGain_Linear,
                             RxGain_Linear = this.RxGain_Linear,
                             ChannelIndex = i,
@@ -651,7 +745,7 @@ namespace SimulatorEngine
                     short[] i_data = new short[numSamples];
                     short[] q_data = new short[numSamples];
                     double currentTime = 0.0;
-                    //double maxQuantVal = 3.0 * noiseStdDev;
+                    double maxQuantVal = 3.0 * noiseStdDev;
 
                     // ⬇️ --- 마이크로 도플러 구현 (수정) --- ⬇️
                     double[] phaseNoiseArray;

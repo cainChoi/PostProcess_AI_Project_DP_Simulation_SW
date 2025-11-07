@@ -20,9 +20,15 @@ namespace RadarSim.Core.Clutter
         public double AdcSampleRate_Hz;
         public int ChannelIndex;
 
-        public double TxPower_W { get; set; }
+        //public double TxPower_W { get; set; }
+
         public double TxGain_Linear { get; set; }
         public double RxGain_Linear { get; set; }
+
+        public double Reference_Range_m { get; set; }
+        public double Reference_SNR_dB { get; set; }
+        public double Reference_RCS_m2 { get; set; }
+        public double Reference_Gain_Linear { get; set; }
 
         /// <summary>
         /// 안테나 빔의 중심(Boresight)이
