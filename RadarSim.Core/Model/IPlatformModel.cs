@@ -71,18 +71,18 @@ namespace RadarSim.Core.Platform
         /// 현재 시간의 플랫폼 기준점 3D 위치 (글로벌 좌표계) [m]
         /// (예: 함선의 무게 중심)
         /// </summary>
-        Vector3 Position { get; }
+        public Vector3 Position { get => m_vecPos; }
 
         /// <summary>
         /// 현재 시간의 플랫폼 3D 속도 (글로벌 좌표계) [m/s]
         /// </summary>
-        Vector3 Velocity { get; }
+        public Vector3 Velocity { get => m_vecVel; }
 
         /// <summary>
         /// 현재 시간의 플랫폼 3D 자세 (Roll, Pitch, Yaw)
         /// (이 값이 안테나 안정화의 기준이 됩니다.)
         /// </summary>
-        Quaternion Attitude { get; }
+        public Quaternion Attitude { get => m_quaAttitude; }
 
         /// <summary>
         /// 이 표적이 현재 유효한지 여부를 반환합니다.

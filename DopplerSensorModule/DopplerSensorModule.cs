@@ -99,7 +99,6 @@ namespace DopplerSensorModule
             Array.Copy(BitConverter.GetBytes(usConv), 0, abyHeader, nHeaderIndex, 2);
             //nHeaderIndex += 2;
 
-
             snap = new SnapShot(dTime, nSequence, dtCur, anArg, abyHeader);
             return abyHeader;
         }

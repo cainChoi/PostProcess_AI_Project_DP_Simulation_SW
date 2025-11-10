@@ -48,8 +48,8 @@ namespace IQ_Synthetic_Data_Simulator
             engine.Bandwidth_B1_Hz = 9_934_000;
             engine.Bandwidth_B2_Hz = 15_894_000;
             string strPath = Environment.CurrentDirectory + "\\";
-            engine.LoadTargetModule(strPath + "BallisticModule.dll", new BallisticModule.TargetParameters() { LaunchElevation = 25, LaunchAzimuth = 90 });
-            engine.LoadPlatformModule(strPath + "ShipModule.dll", new ShipModule.PlatformParameters());
+            engine.LoadTargetModule(strPath + "BallisticModule.dll", new BallisticModule.TargetParameters() { LaunchElevation = 25, LaunchAzimuth = 70 });
+            engine.LoadPlatformModule(strPath + "ShipModule.dll", new ShipModule.PlatformParameters() );
             engine.LoadAntennaModule(strPath + "AntennaModule.dll", new AntennaModule.AntennaParameters());
             engine.LoadHeaderModule(strPath + "DopplerSensorModule.dll", new DopplerSensorModule.HeaderParameters() { dtTime = DateTime.Now, abSTX = BitConverter.GetBytes((ulong)0xDEF09ABC56781234) });
 

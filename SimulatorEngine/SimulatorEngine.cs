@@ -7,6 +7,7 @@ using System.Collections.Generic; // List
 using System.Reflection; // Assembly
 using AntennaModule;
 using System.Threading.Tasks;
+using System.Text;
 
 namespace SimulatorEngine
 {
@@ -276,6 +277,7 @@ namespace SimulatorEngine
         /// <param name="dt">물리 업데이트 시간 간격(초)</param>
         public void RunSimulation(double totalTime, double dt, bool bFileSave, bool bHeaderAdd)
         {
+
             if (trajectoryModule == null || platformModule == null || antennaModule == null)
             { 
                 throw new InvalidOperationException("모든 모듈이 로드되어야 합니다.");
@@ -288,14 +290,17 @@ namespace SimulatorEngine
                 }
             }
 
+
+            string strDate = DateTime.Now.ToString("yyyyMMddHHmmss");
+            string strDateFileName = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            DirectoryInfo dirInfo = new DirectoryInfo(strDate + "\\");
+            dirInfo.Create();
             if (bFileSave)
             { 
                 this.fileStreams = new List<FileStream>();
                 this.fileWriters = new List<BinaryWriter>();
-                string strDate = DateTime.Now.ToString("yyyyMMddHHmmss");
-                DirectoryInfo dirInfo = new DirectoryInfo(strDate + "\\");
-                dirInfo.Create();
-                string strDateFileName = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                
+
                 for (int i = 0; i < 8; i++) // 8개 채널
                 {
                     // (헤더가 필요하면 여기서 먼저 Write)
@@ -312,6 +317,10 @@ namespace SimulatorEngine
                 }
             }
 
+            FileStream fsCreate = new FileStream($"{strDate}\\{strDateFileName}_Trace.csv", FileMode.Create);
+            StreamWriter wrTrace = new StreamWriter(fsCreate, Encoding.UTF8);
+
+
             // 상태 초기화
             simulationTime = 0.0;
             timeSinceLastChirp = 0.0;
@@ -324,12 +333,17 @@ namespace SimulatorEngine
 
                 //System.Diagnostics.Debug.Print(string.Format("{0}", trajectoryModule.Position.Y));
 
-                dataStorages.Add(new DataStorage() { m_dTime = dt, m_ssTrajectory = trajectoryModule.GetSnapshot(), m_ssPlatform = platformModule.GetSnapshot(), m_ssAntenna = antennaModule.GetSnapshot() });
+                dataStorages.Add(new DataStorage() { m_dTime = simulationTime, m_ssTrajectory = trajectoryModule.GetSnapshot(), m_ssPlatform = platformModule.GetSnapshot(), m_ssAntenna = antennaModule.GetSnapshot() });
+
+                string strTrace = Gen_SimulationStep_Trace(dataStorages[dataStorages.Count - 1]);
+
+                wrTrace.WriteLine(strTrace);
 
                 simulationTime += dt;
                 timeSinceLastChirp += dt;
 
                 m_deleUpdateProcess?.Invoke(simulationTime, totalTime);
+                
             }
 
             if (bFileSave)
@@ -343,6 +357,8 @@ namespace SimulatorEngine
                 this.fileStreams.Clear();
                 this.fileWriters.Clear();
             }
+
+            wrTrace.Close();
         }
 
         /// <summary>
@@ -437,6 +453,22 @@ namespace SimulatorEngine
                 timeSinceLastChirp -= this.ChirpDuration_sec;
                 chirpCounter++;
             }
+
+
+        }
+
+        private string Gen_SimulationStep_Trace(DataStorage ds)
+        {
+            string strTrace = "";
+            strTrace = string.Format(
+                        "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13}",
+                        ds.Time,
+                        ds.Trajectory.Position.X, ds.Trajectory.Position.Y, ds.Trajectory.Position.Z,
+                        ds.Platform.Position.X, ds.Platform.Position.Y, ds.Platform.Position.Z,
+                        ds.Platform.Attitude.X, ds.Platform.Attitude.Y, ds.Platform.Attitude.Z, ds.Platform.Attitude.W,
+                        ds.Antenna.BoresightVector_PlatformCoords.X, ds.Antenna.BoresightVector_PlatformCoords.Y, ds.Antenna.BoresightVector_PlatformCoords.Z);
+
+            return strTrace;
         }
 
         /// <summary>

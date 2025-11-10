@@ -87,7 +87,7 @@ namespace ShipModule
             this.simulationTime += timeDelta;
 
             // 2. 선형 위치 업데이트 (속도는 일정하다고 가정)
-            this.currentPosition += this.currentVelocity * (float)timeDelta;
+            this.currentPosition = this.currentPosition + this.currentVelocity * (float)timeDelta;
 
             // 3. 자세(Attitude) 업데이트 (흔들림 시뮬레이션)
 
