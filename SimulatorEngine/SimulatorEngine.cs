@@ -8,6 +8,7 @@ using System.Reflection; // Assembly
 using AntennaModule;
 using System.Threading.Tasks;
 using System.Text;
+using System.Threading;
 
 namespace SimulatorEngine
 {
@@ -29,6 +30,10 @@ namespace SimulatorEngine
             public RadarSim.Core.Header.SnapShot Header { get => m_ssHeader; }
         }
 
+        /// <summary>
+        /// CW채널 IQ 반전에 대한 처리
+        /// </summary>
+        private const bool m_bAWT_DopplerSimul = true;
 
         public List<DataStorage> dataStorages = new List<DataStorage>();
 
@@ -40,11 +45,22 @@ namespace SimulatorEngine
         private List<RadarSim.Core.Clutter.IClutterModel> clutterModels = new List<RadarSim.Core.Clutter.IClutterModel>();
 
         // 잡음/클러터용 난수 생성기
-        private Random noiseRand = new Random();
-        private Random clutterRand = new Random();
+        private Random[] noiseRand = new Random[] {
+            new Random(), new Random(), new Random(), new Random(),
+            new Random(), new Random(), new Random(), new Random() };
+        private Random[] clutterRand = new Random[] {
+            new Random(), new Random(), new Random(), new Random(),
+            new Random(), new Random(), new Random(), new Random() };
 
         // --- 시뮬레이션 파라미터 (WPF UI에서 설정) ---
         //public double CenterFrequency_Hz { get; set; } = 10.5e9;
+
+        /// <summary>
+        /// Parallel.For를 위한 스레드 안전(Thread-Safe) Random 생성기
+        /// </summary>
+        private static ThreadLocal<Random> threadSafeRand = new ThreadLocal<Random>(
+            () => new Random(Guid.NewGuid().GetHashCode())
+        );
 
         /// <summary>
         /// CW 채널의 중심 주파수 (Hz)
@@ -440,7 +456,7 @@ namespace SimulatorEngine
                 }
 
                 if(bFileSave)
-                {
+                { 
                     GenerateAndSaveHeader(dt, chirpCounter);
                 }
 
@@ -467,7 +483,7 @@ namespace SimulatorEngine
                         ds.Platform.Position.X, ds.Platform.Position.Y, ds.Platform.Position.Z,
                         ds.Platform.Attitude.X, ds.Platform.Attitude.Y, ds.Platform.Attitude.Z, ds.Platform.Attitude.W,
                         ds.Antenna.BoresightVector_PlatformCoords.X, ds.Antenna.BoresightVector_PlatformCoords.Y, ds.Antenna.BoresightVector_PlatformCoords.Z);
-
+            
             return strTrace;
         }
 
@@ -533,7 +549,7 @@ namespace SimulatorEngine
             Vector3 relativePos = targetPos - antennaPos;
             double range = relativePos.Length();
             Vector3 losUnitVector = Vector3.Normalize(relativePos);
-
+                
             // B. 상대 속도 (v_target - v_platform) ⋅ LOS
             Vector3 relativeVel = targetVel - platformVel;
             double radialVelocity = -Vector3.Dot(relativeVel, losUnitVector);
@@ -650,10 +666,26 @@ namespace SimulatorEngine
                 antennaModule.BoresightVector_PlatformCoords,
                 platformModule.Attitude);
 
+            // ⬇️ --- (버그 3 픽스: Part 1) --- ⬇️
+            // ADC의 "최대 범위(Full Scale)"를 결정합니다.
+            // 여기서는 "기준 SNR(40dB) 신호 + 20dB 헤드룸"을 최대 범위로 가정합니다.
+            // 이 계산은 '기준이 되는' CW 채널의 잡음 대역폭으로 '한 번만' 수행합니다.
+            double baseNoisePower = k_Boltzmann * SystemTemp_K * this.NoiseBandwidth_CW_Hz * NoiseFigure_Linear;
+            double baseRefSignalPower = baseNoisePower * targetSNR_Linear;
+            double headroom = 20.0; // 20dB (100배) 헤드룸
+
+            // (이 값이 ADC의 고정된 최대 입력 전력(Watts)이라고 가정)
+            double maxAdcPower = baseRefSignalPower * Math.Pow(10, headroom / 10.0);
+            // (ADC 최대 전압(진폭) 계산, P = V^2 / 2 -> V = sqrt(P*2))
+            double maxQuantVal = Math.Sqrt(maxAdcPower * 2.0);
+            // ⬆️ --- (버그 3 픽스: Part 1 완료) --- ⬆️
+
             Parallel.For(0, antennaParams.ElementPositions.Length,
                 i =>
+            //for (int i = 0; i < antennaParams.ElementPositions.Length; i++)
                 {
-
+                    Random rand = threadSafeRand.Value;
+                    bool isCwChannel = antennaParams.CwChannelIndices.Contains(i);
                     //for (int i = 0; i < antennaParams.ElementPositions.Length; i++)
                     //{
                     double current_f_beat;
@@ -747,7 +779,7 @@ namespace SimulatorEngine
                             Platform = this.platformModule,
                             Antenna = this.antennaModule,
                             CenterFrequency_Hz = current_f_carrier,
-                            Bandwidth_Hz = this.NoiseBandwidth_CW_Hz,
+                            Bandwidth_Hz = current_noise_bandwidth,
                             ChirpDuration_sec = this.ChirpDuration_sec,
                             AdcSampleRate_Hz = this.AdcSampleRate_Hz,
                             
@@ -763,7 +795,7 @@ namespace SimulatorEngine
                         // (2) 모든 클러터 모듈의 신호를 합산
                         foreach (var model in this.clutterModels)
                         {
-                            Complex[] c = model.GenerateClutterSignal(context, this.clutterRand);
+                            Complex[] c = model.GenerateClutterSignal(context, rand);
                             for (int s = 0; s < numSamples; s++)
                             {
                                 clutterSignal[s] += c[s]; // ⬅️ 합산
@@ -776,18 +808,19 @@ namespace SimulatorEngine
                     short[] i_data = new short[numSamples];
                     short[] q_data = new short[numSamples];
                     double currentTime = 0.0;
-                    double maxQuantVal = 3.0 * noiseStdDev;
+                    //double maxQuantVal = 3.0 * noiseStdDev;
 
                     // ⬇️ --- 마이크로 도플러 구현 (수정) --- ⬇️
                     double[] phaseNoiseArray;
                     if (targetIsActive)
                     {
+
                         // (1) 엔진은 플러그인에게 위상 배열을 '요청'
                         phaseNoiseArray = trajectoryModule.GetMicroDopplerPhaseNoise(
                             numSamples,
                             timeStep,
                             current_f_carrier,
-                            this.noiseRand // (엔진의 공용 Random 객체 사용)
+                            rand
                         );
                     }
                     else
@@ -811,6 +844,18 @@ namespace SimulatorEngine
                             double signalPhase = (2 * Math.PI * current_f_beat * currentTime)
                                          + totalInitialPhase
                                          + phase_noise; // ⬅️ 스핀/프로펠러 효과 적용
+                            if (m_bAWT_DopplerSimul)
+                            {
+                                if (isCwChannel)
+                                {
+                                    //현재 AWT 도플러 시스템의 CW 채널의 IQ가 반전되어 있을 가능성을 
+                                    //시뮬레이션함.
+                                    // CW 채널일 경우, I/Q가 반전(Conjugate)된 것으로 처리
+                                    // (I + jQ -> I - jQ)는 위상의 부호를 뒤집는 것과 같음
+                                    signalPhase = -signalPhase;
+                                }
+                            }
+
 
                             i_sig = signalAmplitude * Math.Cos(signalPhase);
                             q_sig = signalAmplitude * Math.Sin(signalPhase);
@@ -829,13 +874,13 @@ namespace SimulatorEngine
                         double q_clutter = clutterSignal[s].Imaginary;
 
                         // (3) 잡음 신호
-                        double u1 = 1.0 - noiseRand.NextDouble();
-                        double u2 = 1.0 - noiseRand.NextDouble();
+                        double u1 = 1.0 - rand.NextDouble();
+                        double u2 = 1.0 - rand.NextDouble();
                         double randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
                         double i_noise = noiseStdDev * randStdNormal;
 
-                        u1 = 1.0 - noiseRand.NextDouble();
-                        u2 = 1.0 - noiseRand.NextDouble();
+                        u1 = 1.0 - rand.NextDouble();
+                        u2 = 1.0 - rand.NextDouble();
                         randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
                         double q_noise = noiseStdDev * randStdNormal;
 
@@ -872,7 +917,7 @@ namespace SimulatorEngine
                         writer_I.Write(i_bytes);
                         writer_Q.Write(q_bytes);
                     }
-                    //}
+                //}
                 });
         }
 

@@ -53,7 +53,7 @@ namespace IQ_Synthetic_Data_Simulator
             engine.LoadAntennaModule(strPath + "AntennaModule.dll", new AntennaModule.AntennaParameters());
             engine.LoadHeaderModule(strPath + "DopplerSensorModule.dll", new DopplerSensorModule.HeaderParameters() { dtTime = DateTime.Now, abSTX = BitConverter.GetBytes((ulong)0xDEF09ABC56781234) });
 
-            engine.AddClutterModule(strPath + "SeaClutterModule.dll", new SeaClutterModule.SeaParameters());
+            engine.AddClutterModule(strPath + "SeaClutterModule.dll", new SeaClutterModule.SeaParameters() { SeaState = 9 });
             
 
             engine.RunSimulation(50, 0.04, true, true);
