@@ -129,13 +129,22 @@ namespace AntennaModule
 
         public double GetGain(double offBoresightAngle_Rad)
         {
-            if (this.gainConstant_k == 0) return 1.0; // 빔폭 0이면 항상 1.0
+            if (this.parameters.UseSidelobe)
+            {
+                double x = this.gainConstant_k * offBoresightAngle_Rad;
+                double gain = Math.Abs(Math.Sin(x) / x); // 사이드로브가 생김
+                return gain;
+            }
+            else
+            {
+                if (this.gainConstant_k == 0) return 1.0; // 빔폭 0이면 항상 1.0
 
-            // 5. 가우시안 빔 패턴 근사: Gain = exp(-k * (angle)^2)
-            //    offBoresightAngle_Rad는 이미 라디안 단위
-            double gain = Math.Exp(-this.gainConstant_k * offBoresightAngle_Rad * offBoresightAngle_Rad);
+                // 5. 가우시안 빔 패턴 근사: Gain = exp(-k * (angle)^2)
+                //    offBoresightAngle_Rad는 이미 라디안 단위
+                double gain = Math.Exp(-this.gainConstant_k * offBoresightAngle_Rad * offBoresightAngle_Rad);
 
-            return gain;
+                return gain;
+            }
         }
 
         public IAntennaParameters GetParameters()

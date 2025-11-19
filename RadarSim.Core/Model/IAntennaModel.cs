@@ -137,5 +137,10 @@ namespace RadarSim.Core.Antenna
         /// 0이면 완벽하게 추적
         /// </summary>
         double TrackingNoiseStdDevDegrees { get; set; }
+
+        /// <summary>
+        /// 사이드로브에 영향을 시뮬레이션한다.
+        /// </summary>
+        bool UseSidelobe { get; set; }
     }
 }

@@ -342,6 +342,17 @@ namespace SimulatorEngine
             timeSinceLastChirp = 0.0;
             chirpCounter = 0;
             dataStorages.Clear();
+
+            var header = new StringBuilder();
+            header.Append("Time_sec,");
+            header.Append("Target_X,Target_Y,Target_Z,"); // 궤적 위치
+            header.Append("Target_Vel_X,Target_Vel_Y,Target_Vel_Z,"); // 궤적 속도 (추가됨)
+            header.Append("Platform_X,Platform_Y,Platform_Z,"); // 플랫폼 위치
+            header.Append("Platform_Vel_X,Platform_Vel_Y,Platform_Vel_Z,"); // 플랫폼 위치
+            header.Append("Platform_Att_X,Platform_Att_Y,Platform_Att_Z,Platform_Att_W,"); // 플랫폼 자세
+            header.Append("Boresight_X,Boresight_Y,Boresight_Z"); // 안테나 방향
+            wrTrace.WriteLine(header.ToString());
+
             while (simulationTime <= totalTime)
             {
                 // 이 함수가 메인 루프의 핵심입니다.
@@ -477,10 +488,12 @@ namespace SimulatorEngine
         {
             string strTrace = "";
             strTrace = string.Format(
-                        "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13}",
+                        "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{17},{18},{19}",
                         ds.Time,
                         ds.Trajectory.Position.X, ds.Trajectory.Position.Y, ds.Trajectory.Position.Z,
+                        ds.Trajectory.Velocity.X, ds.Trajectory.Velocity.Y, ds.Trajectory.Velocity.Z,
                         ds.Platform.Position.X, ds.Platform.Position.Y, ds.Platform.Position.Z,
+                        ds.Platform.Velocity.X, ds.Platform.Velocity.Y, ds.Platform.Velocity.Z,
                         ds.Platform.Attitude.X, ds.Platform.Attitude.Y, ds.Platform.Attitude.Z, ds.Platform.Attitude.W,
                         ds.Antenna.BoresightVector_PlatformCoords.X, ds.Antenna.BoresightVector_PlatformCoords.Y, ds.Antenna.BoresightVector_PlatformCoords.Z);
             

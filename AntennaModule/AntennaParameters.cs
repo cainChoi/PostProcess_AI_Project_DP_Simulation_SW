@@ -85,5 +85,7 @@ namespace AntennaModule
         /// 0이면 완벽하게 추적
         /// </summary>
         public double TrackingNoiseStdDevDegrees { get; set; } = 1.1; // 예: 0.1도 오차
+
+        public bool UseSidelobe { get; set; } = true;
     }
 }
